@@ -1,6 +1,8 @@
 $version: "0.4.0"
 namespace example.weather
 
+use smithy.test#httpRequestTests
+
 /// Provides weather forecasts.
 @protocols([{name: "aws.rest-json-1.1"}])
 @paginated(inputToken: "nextToken", outputToken: "nextToken", pageSize: "pageSize")
@@ -38,6 +40,21 @@ operation GetCity {
     output: GetCityOutput,
     errors: [NoSuchResource]
 }
+
+// Tests that HTTP protocol tests are generated.
+apply GetCity @httpRequestTests([
+    {
+        id: "WriteTestAssertions",
+        documentation: "Does something",
+        protocol: "aws.rest-json-1.1",
+        method: "GET",
+        uri: "/cities/123",
+        body: "",
+        params: {
+            cityId: "123"
+        }
+    }
+])
 
 /// The input used to get a city.
 structure GetCityInput {
