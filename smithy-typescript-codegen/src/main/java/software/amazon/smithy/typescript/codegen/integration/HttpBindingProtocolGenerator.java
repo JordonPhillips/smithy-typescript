@@ -1105,7 +1105,6 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                 + "  output: $T,\n"
                 + "  context: $L\n"
                 + "): Promise<$T> => {", "}", methodName, requestType, contextType, inputType, () -> {
-            // TODO: deserialize path
             // TODO: deserialize endpoint
             // Start deserializing the response.
             writer.openBlock("const contents: $T = {", "};", inputType, () -> {
@@ -1119,6 +1118,7 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                 });
             });
             readQueryString(context, operation, bindingIndex);
+            readPath(context, operation, bindingIndex, trait);
             readRequestHeaders(context, operation, bindingIndex, "output");
             List<HttpBinding> documentBindings = readRequestBody(context, operation, bindingIndex);
             // Track all shapes bound to the document so their deserializers may be generated.
@@ -1153,6 +1153,38 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                 });
             }
         });
+    }
+
+    private void readPath(
+            GenerationContext context,
+            OperationShape operation,
+            HttpBindingIndex bindingIndex,
+            HttpTrait trait
+    ) {
+        TypeScriptWriter writer = context.getWriter();
+        List<HttpBinding> pathBindings = bindingIndex.getRequestBindings(operation, Location.LABEL);
+        if (pathBindings.isEmpty()) {
+            return;
+        }
+        StringBuilder pathRegexBuilder = new StringBuilder("/");
+        for (Segment segment : trait.getUri().getSegments()) {
+            if (segment.isLabel()) {
+                // Create a named capture group for the segment so we can grab it later without regard to order.
+                pathRegexBuilder.append(String.format("(?<%s>.*)", segment.getContent()));
+            } else {
+                pathRegexBuilder.append(segment.getContent());
+            }
+            pathRegexBuilder.append("/");
+        }
+        writer.write("const pathRegex = new RegExp($S);", pathRegexBuilder.toString());
+        writer.write("const parsedPath: RegExpMatchArray = output.endpoint.path.match(pathRegex);");
+        for (HttpBinding binding : pathBindings) {
+            Shape target = context.getModel().expectShape(binding.getMember().getTarget());
+            String memberName = context.getSymbolProvider().toMemberName(binding.getMember());
+            String labelValue = getOutputValue(context, binding.getLocation(),
+                    "parsedPath.groups." + binding.getLocationName(), binding.getMember(), target);
+            writer.write("contents.$L = $L;", memberName, labelValue);
+        }
     }
 
     private void generateOperationResponseDeserializer(
